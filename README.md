@@ -11,9 +11,9 @@ The panel is in English. You can speak in **English, Spanish, Italian, German, F
 
 ## Demo
 
-[![Octovox panel answering "What is this session about?" next to a GitHub Copilot app chat](docs/octovox-demo.png)](https://cdn.jsdelivr.net/gh/jrubiosainz/octovox@main/docs/octovox-demo.mp4)
+[![Octovox product video: four Copilot sessions shown as radio channels, with a question asked in German and answered aloud while the session keeps working](docs/octovox-demo.png)](https://cdn.jsdelivr.net/gh/jrubiosainz/octovox@main/docs/octovox-demo.mp4)
 
-▶ [**Watch the demo with sound**](https://cdn.jsdelivr.net/gh/jrubiosainz/octovox@main/docs/octovox-demo.mp4) (1:14). Holding the talk button, the user asks "Can you tell me what is this session about?". The session answers in the panel (side questions never interrupt its work), and Octovox reads the answer aloud with a MAI-Voice voice. You can also [download the MP4](docs/octovox-demo.mp4).
+▶ [**Watch the product video with sound**](https://cdn.jsdelivr.net/gh/jrubiosainz/octovox@main/docs/octovox-demo.mp4) (1:00). Every Copilot session is a radio channel: questions in Spanish, German and French are answered aloud while the sessions keep working. It also shows the voice providers, a prompt dictated by voice, Check-in, spoken alerts, a question answered out loud and **Mute all messages** for calls. The sessions in it are synthetic, and the Copilot mascot and GitHub logos come from the [GitHub Brand Toolkit](https://brand.github.com/). You can also [download the MP4](docs/octovox-demo.mp4).
 
 ## What it does
 
