@@ -9,6 +9,12 @@
 
 The panel is in English. You can speak in **English, Spanish, Italian, German, French, Portuguese, Dutch or Polish**, or let Octovox detect the language.
 
+## Demo
+
+[![Octovox panel answering "What is this session about?" next to a GitHub Copilot app chat](docs/octovox-demo.png)](docs/octovox-demo.mp4)
+
+▶ [**Watch the demo with sound**](docs/octovox-demo.mp4) (1:14, MP4). Holding the talk button, the user asks "Can you tell me what is this session about?". The session answers in the panel (side questions never interrupt its work), and Octovox reads the answer aloud with a MAI-Voice voice.
+
 ## What it does
 
 | Mode | What happens |
