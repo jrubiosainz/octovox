@@ -1,0 +1,14 @@
+# User data and runtime state (settings, logs, live-session registry, caches)
+artifacts/
+.run/
+
+# Created by setup.sh
+stt/.venv/
+stt/.wheels/
+ui/.fonts/
+
+__pycache__/
+node_modules/
+*.log
+*.tmp
+.DS_Store

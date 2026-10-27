@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Octovox</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%238534f3'><rect x='.5' y='9' width='2' height='6' rx='1'/><rect x='3.5' y='6.5' width='2' height='11' rx='1'/><rect x='6.5' y='3' width='2' height='18' rx='1'/><rect x='9.5' y='5.5' width='2' height='13' rx='1'/><rect x='12.5' y='2' width='2' height='20' rx='1'/><rect x='15.5' y='4.5' width='2' height='15' rx='1'/><rect x='18.5' y='7' width='2' height='10' rx='1'/><rect x='21.5' y='9' width='2' height='6' rx='1'/></svg>">
+    <script>
+        // Light or dark before the first paint; app.js refines it with the tokens the app injects.
+        (function () {
+            var root = document.documentElement;
+            var mode = root.getAttribute("data-theme-tone") || root.getAttribute("data-color-mode");
+            var dark = mode === "dark" || ((!mode || mode === "auto") && matchMedia("(prefers-color-scheme: dark)").matches);
+            root.setAttribute("data-tone", dark ? "dark" : "light");
+        })();
+    </script>
+    <link rel="preload" href="fonts/mona-sans.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="app.css">
+</head>
+<body>
+<!--ICONS-->
+<div class="app">
+    <header class="appbar">
+        <span class="brand" title="Octovox · voice for GitHub Copilot">
+            <svg class="brand-mark" aria-hidden="true"><use href="#ov-mark"/></svg>
+            <span class="brand-name">Octovox</span>
+        </span>
+        <span class="crumb-sep" aria-hidden="true">/</span>
+        <div class="picker">
+            <button type="button" id="picker" class="picker-btn" aria-haspopup="listbox" aria-expanded="false" aria-controls="picker-panel" title="Session you're talking to">
+                <span id="picker-state" class="state" aria-hidden="true"></span>
+                <span id="picker-label" class="truncate">This session</span>
+                <svg class="oi caret" aria-hidden="true"><use href="#oi-triangle-down-16"/></svg>
+            </button>
+            <div id="picker-panel" class="overlay" hidden>
+                <div class="overlay-head" id="picker-title">Talk to…</div>
+                <div id="picker-list" role="listbox" aria-labelledby="picker-title"></div>
+            </div>
+        </div>
+        <button type="button" id="open-settings" class="btn-icon" aria-label="Settings" title="Settings" aria-expanded="false" aria-controls="settings">
+            <svg class="oi" aria-hidden="true"><use href="#oi-gear-16"/></svg>
+        </button>
+    </header>
+
+    <section class="run" aria-live="polite" aria-label="Session status">
+        <div class="run-head">
+            <span id="st-icon" class="state" aria-hidden="true"></span>
+            <strong id="st-label">Connecting…</strong>
+            <span id="st-time" class="run-time"></span>
+        </div>
+        <div id="st-step" class="run-step" hidden>
+            <svg class="oi" aria-hidden="true"><use id="st-step-icon" href="#oi-tools-16"/></svg>
+            <span id="st-step-text" class="clamp"></span>
+        </div>
+        <div id="st-tasks" class="run-tasks" hidden>
+            <span class="progress" aria-hidden="true"><span id="st-bar"></span></span>
+            <span id="st-tasks-text" class="truncate"></span>
+        </div>
+    </section>
+
+    <section id="pending" class="banner" hidden aria-live="assertive">
+        <svg class="oi banner-icon" aria-hidden="true"><use href="#oi-question-bubble-16"/></svg>
+        <div class="banner-body">
+            <p class="banner-title"><span id="pd-who">Copilot</span> is asking you</p>
+            <p id="pd-question" class="banner-text"></p>
+            <div id="pd-choices" class="choices"></div>
+            <p class="caption">Pick an option or answer with the talk button.</p>
+        </div>
+    </section>
+
+    <main id="log" class="log" aria-live="polite" aria-label="Conversation"></main>
+
+    <form id="settings" class="settings" hidden novalidate>
+        <div class="subhead"><h2>Settings</h2></div>
+
+        <section class="group" aria-labelledby="set-language">
+            <h3 id="set-language" class="group-title">Language</h3>
+            <label class="field"><span class="field-label">I speak</span>
+                <span class="select">
+                    <select name="language"><option value="auto">Auto-detect</option></select>
+                    <svg class="oi" aria-hidden="true"><use href="#oi-triangle-down-16"/></svg>
+                </span>
+                <span class="caption">Octovox listens and answers in this language. Auto-detect follows whichever language you speak.</span>
+            </label>
+        </section>
+
+        <section class="group" aria-labelledby="set-voice">
+            <h3 id="set-voice" class="group-title">Voice</h3>
+            <fieldset class="field options">
+                <legend class="field-label">Provider</legend>
+                <label class="radio"><input type="radio" name="tts.provider" value="foundry">
+                    <span><span class="option-title"><svg class="oi" aria-hidden="true"><use href="#oi-cloud-16"/></svg>Azure AI Foundry</span><span class="caption">MAI-Voice and Azure neural voices from your Foundry or Speech resource.</span></span>
+                </label>
+                <label class="radio"><input type="radio" name="tts.provider" value="openai">
+                    <span><span class="option-title"><svg class="oi" aria-hidden="true"><use href="#oi-link-external-16"/></svg>OpenAI-compatible</span><span class="caption">Any <code>/audio/speech</code> endpoint, such as gpt-4o-mini-tts on Azure OpenAI.</span></span>
+                </label>
+                <label class="radio"><input type="radio" name="tts.provider" value="system">
+                    <span><span class="option-title"><svg class="oi" aria-hidden="true"><use href="#oi-device-desktop-16"/></svg>macOS voices</span><span class="caption">Built into your Mac and work offline, but sound the most robotic.</span></span>
+                </label>
+            </fieldset>
+
+            <div class="provider" data-provider="foundry">
+                <label class="field"><span class="field-label">Endpoint</span>
+                    <input class="input" type="url" name="tts.foundry.endpoint" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://<resource>.cognitiveservices.azure.com">
+                    <span class="caption">Your Foundry resource or project endpoint. Regional Speech endpoints (<code>&lt;region&gt;.tts.speech.microsoft.com</code>) need an API key.</span>
+                </label>
+                <label class="field"><span class="field-label">Authentication</span>
+                    <span class="select">
+                        <select name="tts.foundry.auth">
+                            <option value="entra">Microsoft Entra ID (Azure CLI)</option>
+                            <option value="key">API key</option>
+                        </select>
+                        <svg class="oi" aria-hidden="true"><use href="#oi-triangle-down-16"/></svg>
+                    </span>
+                    <span class="note" data-auth-note="foundry"></span>
+                </label>
+                <div class="field" data-key-field="foundry">
+                    <label class="field-label" for="foundry-key">API key</label>
+                    <div class="input-group">
+                        <input class="input" id="foundry-key" type="password" autocomplete="off" spellcheck="false" placeholder="Paste a key">
+                        <button type="button" class="btn" data-key-save="foundry"><svg class="oi" aria-hidden="true"><use href="#oi-key-16"/></svg>Save</button>
+                    </div>
+                    <span class="note" data-key-status="foundry"></span>
+                </div>
+                <label class="field"><span class="field-label">Model</span>
+                    <span class="select">
+                        <select name="tts.foundry.model">
+                            <option value="MAI-Voice-2.1">MAI-Voice-2.1</option>
+                            <option value="MAI-Voice-2.1-Flash">MAI-Voice-2.1-Flash</option>
+                            <option value="MAI-Voice-2">MAI-Voice-2</option>
+                            <option value="MAI-Voice-2-Flash">MAI-Voice-2-Flash</option>
+                            <option value="neural">Azure neural and HD voices</option>
+                        </select>
+                        <svg class="oi" aria-hidden="true"><use href="#oi-triangle-down-16"/></svg>
+                    </span>
+                </label>
+                <div class="field">
+                    <div class="field-head">
+                        <span class="field-label" id="voices-label">Voice for each language</span>
+                        <button type="button" id="refresh-voices" class="btn-icon btn-icon-sm" aria-label="Reload the voice list" title="Reload the voice list">
+                            <svg class="oi" aria-hidden="true"><use href="#oi-sync-16"/></svg>
+                        </button>
+                    </div>
+                    <div id="voice-grid" class="voice-grid" role="group" aria-labelledby="voices-label"></div>
+                    <span id="voices-status" class="note"></span>
+                </div>
+            </div>
+
+            <div class="provider" data-provider="openai">
+                <label class="field"><span class="field-label">Endpoint</span>
+                    <input class="input" type="url" name="tts.openai.endpoint" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://<resource>.openai.azure.com">
+                    <span class="caption">An Azure OpenAI resource, or any server with an OpenAI-style <code>/audio/speech</code> route, such as <code>https://api.openai.com/v1</code>.</span>
+                </label>
+                <label class="field"><span class="field-label">Authentication</span>
+                    <span class="select">
+                        <select name="tts.openai.auth">
+                            <option value="key">API key</option>
+                            <option value="entra">Microsoft Entra ID (Azure CLI)</option>
+                        </select>
+                        <svg class="oi" aria-hidden="true"><use href="#oi-triangle-down-16"/></svg>
+                    </span>
+                    <span class="note" data-auth-note="openai"></span>
+                </label>
+                <div class="field" data-key-field="openai">
+                    <label class="field-label" for="openai-key">API key</label>
+                    <div class="input-group">
+                        <input class="input" id="openai-key" type="password" autocomplete="off" spellcheck="false" placeholder="Paste a key">
+                        <button type="button" class="btn" data-key-save="openai"><svg class="oi" aria-hidden="true"><use href="#oi-key-16"/></svg>Save</button>
+                    </div>
+                    <span class="note" data-key-status="openai"></span>
+                </div>
+                <div class="field-row">
+                    <label class="field"><span class="field-label">Model</span>
+                        <input class="input" name="tts.openai.model" list="openai-models" autocomplete="off" spellcheck="false" placeholder="gpt-4o-mini-tts">
+                    </label>
+                    <label class="field"><span class="field-label">Voice</span>
+                        <input class="input" name="tts.openai.voice" list="openai-voices" autocomplete="off" spellcheck="false" placeholder="coral">
+                    </label>
+                </div>
+                <span class="caption">On Azure OpenAI, the model is your deployment name.</span>
+                <label class="field"><span class="field-label">Speaking style</span>
+                    <textarea class="input" name="tts.openai.instructions" rows="2" maxlength="400" spellcheck="false"></textarea>
+                    <span class="caption">Only gpt-4o-mini-tts and newer models follow these instructions.</span>
+                </label>
+                <datalist id="openai-models">
+                    <option value="gpt-4o-mini-tts"></option>
+                    <option value="tts-1-hd"></option>
+                    <option value="tts-1"></option>
+                </datalist>
+                <datalist id="openai-voices">
+                    <option value="alloy"></option><option value="ash"></option><option value="ballad"></option><option value="cedar"></option>
+                    <option value="coral"></option><option value="echo"></option><option value="fable"></option><option value="marin"></option>
+                    <option value="nova"></option><option value="onyx"></option><option value="sage"></option><option value="shimmer"></option>
+                    <option value="verse"></option>
+                </datalist>
+            </div>
+
+            <div class="provider" data-provider="system">
+                <p class="caption">Octovox uses the best voice installed for each language. For a more natural sound, add Premium voices in System Settings › Accessibility › Spoken Content › System voice › Manage Voices.</p>
+            </div>
+
+            <label class="field">
+                <span class="field-head"><span class="field-label">Speed</span><output id="speed-value" class="caption">1.00×</output></span>
+                <input type="range" name="speed" min="0.7" max="1.6" step="0.05">
+            </label>
+
+            <div class="test-row">
+                <button type="button" id="test-voice" class="btn"><svg class="oi" aria-hidden="true"><use href="#oi-unmute-16"/></svg>Test voice</button>
+                <span id="test-status" class="note" role="status"></span>
+            </div>
+        </section>
+
+        <section class="group" aria-labelledby="set-behavior">
+            <h3 id="set-behavior" class="group-title">Behavior</h3>
+            <label class="check"><input type="checkbox" name="speak">
+                <span><span class="field-label">Read answers aloud</span><span class="caption">Sentence by sentence, while the answer is still arriving.</span></span>
+            </label>
+            <label class="check"><input type="checkbox" name="announce">
+                <span><span class="field-label">Spoken alerts</span><span class="caption">When a session asks you something, waits for your approval or finishes a long task.</span></span>
+            </label>
+            <label class="check"><input type="checkbox" name="sounds">
+                <span><span class="field-label">GitHub Copilot sounds</span><span class="caption">The same sounds the app plays when dictation opens and closes.</span></span>
+            </label>
+            <label class="check"><input type="checkbox" name="autoSend">
+                <span><span class="field-label">Send dictated prompts without review</span><span class="caption">When off, the text stays in the box so you can fix it first.</span></span>
+            </label>
+            <label class="field"><span class="field-label">If the session is busy, a prompt…</span>
+                <span class="select">
+                    <select name="sendMode">
+                        <option value="enqueue">waits until it finishes (queued)</option>
+                        <option value="immediate">steers it at its next step</option>
+                    </select>
+                    <svg class="oi" aria-hidden="true"><use href="#oi-triangle-down-16"/></svg>
+                </span>
+            </label>
+        </section>
+
+        <div class="actions">
+            <button type="button" id="close-settings" class="btn btn-primary">Done</button>
+        </div>
+    </form>
+
+    <div id="flash" class="flash" role="status" hidden>
+        <svg class="oi" aria-hidden="true"><use id="flash-icon" href="#oi-info-16"/></svg>
+        <span id="flash-text"></span>
+    </div>
+
+    <footer class="dock">
+        <div class="segmented" role="radiogroup" aria-label="What the talk button does">
+            <button type="button" class="seg" data-mode="ask" role="radio" aria-checked="true" title="Side question: the session answers without stopping what it's doing">
+                <svg class="oi" aria-hidden="true"><use href="#oi-comment-discussion-16"/></svg><span>Ask</span>
+            </button>
+            <button type="button" class="seg" data-mode="prompt" role="radio" aria-checked="false" title="A message to the session, as if you typed it in its chat">
+                <svg class="oi" aria-hidden="true"><use href="#oi-paper-airplane-16"/></svg><span>Prompt</span>
+            </button>
+            <button type="button" class="seg" data-mode="answer" role="radio" aria-checked="false" title="Answer the pending question" hidden>
+                <svg class="oi" aria-hidden="true"><use href="#oi-reply-16"/></svg><span>Reply</span>
+            </button>
+        </div>
+        <div class="ptt-row">
+            <button type="button" id="check-in" class="btn btn-sm" title="Ask every working session how it's going">
+                <svg class="oi" aria-hidden="true"><use href="#oi-broadcast-16"/></svg>Check-in
+            </button>
+            <button type="button" id="ptt" class="ptt" aria-label="Hold to talk" aria-pressed="false">
+                <span class="ptt-ring" aria-hidden="true"></span>
+                <span class="bars" aria-hidden="true"><i style="--i:0;--rest:.3"></i><i style="--i:1;--rest:.55"></i><i style="--i:2;--rest:.9"></i><i style="--i:3;--rest:.65"></i><i style="--i:4;--rest:1"></i><i style="--i:5;--rest:.75"></i><i style="--i:6;--rest:.5"></i><i style="--i:7;--rest:.3"></i></span>
+            </button>
+            <button type="button" id="hush" class="btn btn-sm" title="Stop speaking (Esc)" disabled>
+                <svg class="oi" aria-hidden="true"><use href="#oi-mute-16"/></svg>Stop
+            </button>
+        </div>
+        <p id="hint" class="hint" aria-live="polite"></p>
+        <form id="compose" class="composer">
+            <textarea id="text" rows="1" placeholder="…or type it here" aria-label="Message"></textarea>
+            <button type="submit" id="send" class="btn-icon send" aria-label="Ask" title="Ask (Enter)">
+                <svg class="oi" aria-hidden="true"><use href="#oi-paper-airplane-16"/></svg>
+            </button>
+        </form>
+    </footer>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
