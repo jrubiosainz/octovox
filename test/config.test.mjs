@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
@@ -105,4 +105,19 @@ test("older installs keep their speech settings from settings.json until the nex
     saveSettings({ sounds: false });
     assert.equal(JSON.parse(readFileSync(join(DATA_DIR, "speech.json"), "utf8")).tts.foundry.endpoint, "https://res.cognitiveservices.azure.com");
     assert.equal("rate" in JSON.parse(readFileSync(join(DATA_DIR, "settings.json"), "utf8")), false);
+});
+
+test("Mute all messages is a flag file that other saves can't reset by accident", () => {
+    const flag = join(DATA_DIR, "muted");
+    assert.equal(loadSettings().muted, false);
+    assert.equal(saveSettings({ muted: true }).muted, true);
+    assert.equal(existsSync(flag), true);
+    assert.equal("muted" in JSON.parse(readFileSync(join(DATA_DIR, "settings.json"), "utf8")), false);
+    // Saving anything else, or a panel rewriting settings.json on its own, keeps it muted.
+    saveSettings({ sounds: true });
+    writeFileSync(join(DATA_DIR, "settings.json"), JSON.stringify({ mode: "ask", speak: true, muted: false }));
+    assert.equal(loadSettings().muted, true);
+    assert.equal(saveSettings({ muted: false }).muted, false);
+    assert.equal(existsSync(flag), false);
+    assert.equal(saveSettings({ muted: "yes" }).muted, false);
 });

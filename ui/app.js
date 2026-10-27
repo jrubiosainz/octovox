@@ -41,6 +41,8 @@ const el = {
     ptt: $("ptt"),
     bars: [...document.querySelectorAll(".bars i")],
     hush: $("hush"),
+    muteAll: $("mute-all"),
+    mutedBadge: $("muted-badge"),
     hint: $("hint"),
     compose: $("compose"),
     text: $("text"),
@@ -54,6 +56,7 @@ const MODE_HINTS = {
     answer: "Hold and say your answer.",
 };
 const SEND_LABELS = { ask: "Ask", prompt: "Send prompt", answer: "Reply" };
+const MUTED_HINT = "Messages are muted. Turn off “Mute all messages” to listen.";
 const STARTERS = ["How's it going?", "What have you found so far?", "Do you need anything from me?"];
 const TOOL_ICONS = [
     [/^(bash|shell|powershell|read_bash|write_bash|stop_bash)$/, "terminal-16"],
@@ -365,6 +368,7 @@ function replayButton(node) {
     button.setAttribute("aria-label", "Play again");
     button.append(icon("unmute-16"));
     button.addEventListener("click", () => {
+        if (state.settings?.muted) return flash(MUTED_HINT, "warn");
         if (node.dataset.text) api("/api/tts/speak", { text: node.dataset.text }).catch((error) => flash(error.message, "error"));
     });
     return button;
@@ -827,6 +831,36 @@ function hush() {
     api("/api/tts/stop", {}).catch(() => {});
 }
 
+// --- Mute all messages ---
+
+function renderMute() {
+    const muted = state.settings?.muted === true;
+    el.muteAll.setAttribute("aria-pressed", String(muted));
+    el.muteAll.title = muted
+        ? "All messages are muted. Click to turn voice and sounds back on."
+        : "Silence every spoken answer, alert and sound in all your sessions, for example during a call. Answers still show here.";
+    el.mutedBadge.hidden = !muted;
+}
+
+async function toggleMute() {
+    // Panels served by an older Octovox process don't know this setting yet.
+    if (typeof state.settings?.muted !== "boolean") {
+        flash("This session still runs an older Octovox. Reopen the session (or restart the app) to use Mute all messages.", "warn");
+        return;
+    }
+    const muted = !state.settings.muted;
+    state.settings = { ...state.settings, muted };
+    renderMute();
+    try {
+        state.settings = (await api("/api/settings", { muted })).settings;
+        flash(muted ? "All messages muted. Answers and alerts keep showing here, without voice or sounds." : "Voice and sounds are back on.");
+    } catch (error) {
+        state.settings = { ...state.settings, muted: !muted };
+        flash(`Couldn't change Mute all messages: ${error.message}`, "error");
+    }
+    renderMute();
+}
+
 function appendToComposer(text) {
     el.text.value = el.text.value.trim() ? `${el.text.value.trimEnd()} ${text}` : text;
     state.composerDictated = true;
@@ -1085,6 +1119,7 @@ function voiceDisplay(voice) {
 }
 
 async function testVoice() {
+    if (state.settings?.muted) return setNote(el.testStatus, MUTED_HINT, { tone: "attention", icon: "alert-fill-16" });
     el.testVoice.disabled = true;
     setNote(el.testStatus, "Preparing a sample…", { spin: true });
     try {
@@ -1102,6 +1137,7 @@ async function testVoice() {
 }
 
 async function previewVoice(button) {
+    if (state.settings?.muted) return flash(MUTED_HINT, "warn");
     button.disabled = true;
     button.replaceChildren(make("span", "spin"));
     try {
@@ -1205,6 +1241,7 @@ const handlers = {
     },
     settings: ({ settings }) => {
         state.settings = settings;
+        renderMute();
         if (!el.settings.hidden) fillSettings();
     },
     peers: ({ peers }) => {
@@ -1309,6 +1346,7 @@ document.addEventListener("pointerdown", (event) => {
 for (const button of el.modes) button.addEventListener("click", () => setMode(button.dataset.mode));
 el.checkIn.addEventListener("click", checkIn);
 el.hush.addEventListener("click", hush);
+el.muteAll.addEventListener("click", toggleMute);
 el.compose.addEventListener("submit", (event) => {
     event.preventDefault();
     const text = el.text.value.trim();
@@ -1369,6 +1407,7 @@ async function init() {
         state.stt = snapshot.stt ?? state.stt;
         state.target ||= state.selfId;
         fillLanguages();
+        renderMute();
         const wanted = params.get("mode");
         setMode(wanted === "ask" || wanted === "prompt" ? wanted : snapshot.settings.mode, { persist: false });
         renderAll();

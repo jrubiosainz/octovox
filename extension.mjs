@@ -95,7 +95,7 @@ const canvas = createCanvas({
         },
         {
             name: "speak",
-            description: "Read a short message aloud to the user with the configured voice (language auto-detected).",
+            description: "Read a short message aloud to the user with the configured voice (language auto-detected). Says nothing while the user has muted all Octovox messages.",
             inputSchema: {
                 type: "object",
                 properties: { text: { type: "string", minLength: 1, maxLength: 2000 } },
@@ -103,8 +103,7 @@ const canvas = createCanvas({
                 additionalProperties: false,
             },
             handler: guard("speak_failed", async ({ text }) => {
-                await hub.say(text);
-                return { spoken: true };
+                return (await hub.say(text)) ? { spoken: true } : { spoken: false, reason: "The user has muted all Octovox messages." };
             }),
         },
     ],

@@ -133,3 +133,30 @@ test("playPrepared plays already-synthesized audio", async () => {
     await until(() => log.includes("end sample-audio"));
     assert.equal(synthesized.length, 0);
 });
+
+test("stays silent while muted, and muting cuts playback mid-sentence", async () => {
+    let muted = true;
+    const { engine, synthesized } = cloudEngine();
+    const speaker = new Speaker({ engineFor: () => engine, muted: () => muted });
+    speaker.speak("This sentence must never reach the speakers.", { lang: "en" });
+    speaker.stream({ lang: "en" }).push("Nor this streamed one, even when it is long enough. ");
+    await sleep(80);
+    assert.deepEqual(synthesized, [], "nothing is even synthesized while muted");
+    assert.equal(log.filter((line) => line.startsWith("play")).length, 0);
+    assert.equal(speaker.speaking, false);
+
+    muted = false;
+    playback.audio = (audio) => {
+        log.push(`play ${audio.toString()}`);
+        return fakeProc(audio.toString(), 3000);
+    };
+    speaker.speak("A long first sentence that keeps playing for a while. And a second one that must be dropped.", { lang: "en" });
+    await until(() => log.includes("play A long first sentence that keeps playing for a while."));
+    const mutedAt = Date.now();
+    muted = true; // e.g. another session's panel created the flag file
+    await until(() => log.includes("kill A long first sentence that keeps playing for a while."), 1500);
+    assert.ok(Date.now() - mutedAt < 700, "stops within a fraction of a second");
+    await sleep(60);
+    assert.ok(!log.some((line) => line.startsWith("play And a second")));
+    assert.equal(speaker.speaking, false);
+});

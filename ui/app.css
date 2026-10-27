@@ -262,6 +262,19 @@ button {
 }
 
 /* Header: "Octovox / session ▾", like GitHub's repository picker */
+.label-attention {
+    gap: 4px;
+    margin-right: 4px;
+    border-color: var(--attention-muted);
+    background: var(--attention-subtle);
+    color: var(--attention);
+}
+
+.label .oi {
+    width: 12px;
+    height: 12px;
+}
+
 .appbar {
     position: relative;
     z-index: 10;
@@ -1249,8 +1262,39 @@ input[type="range"] {
     justify-self: start;
 }
 
-#hush {
+/* Stop, and the "Mute all messages" switch under it for calls. */
+.ptt-side {
     justify-self: end;
+    display: grid;
+    justify-items: end;
+    gap: 6px;
+}
+
+.btn-mute .short {
+    display: none;
+}
+
+.btn-mute[aria-pressed="true"] {
+    border-color: var(--attention-muted);
+    background: var(--attention-subtle);
+}
+
+.btn-mute[aria-pressed="true"] .oi {
+    color: var(--attention);
+}
+
+.btn-mute[aria-pressed="true"]:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--attention) 18%, var(--bg));
+}
+
+@media (max-width: 440px) {
+    .btn-mute .long {
+        display: none;
+    }
+
+    .btn-mute .short {
+        display: inline;
+    }
 }
 
 .ptt {

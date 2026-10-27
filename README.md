@@ -18,6 +18,7 @@ The panel is in English. You can speak in **English, Spanish, Italian, German, F
 | **Reply** | When a session asks you something (`ask_user`), Octovox tells you and you can answer by voice: "the second one", "PostgreSQL", "yes, go ahead", "la segunda"… |
 | **Check-in** | Asks every working session at once. The answers appear like a pull request's checks list, and you hear one sentence from each. |
 | **Spoken alerts** | Octovox tells you when a session asks you something, waits for you to approve a plan or a permission, or finishes a long task. |
+| **Mute all messages** | One click, under **Stop**, silences every spoken answer, alert and sound in all your sessions, for example during a call with a customer. Answers and alerts keep appearing in the panel, and the header shows **Muted** until you click it again, even after a restart. |
 
 When you ask the session the panel belongs to, it also gets the live status of your other sessions, so "how are my sessions doing?" works from anywhere.
 
@@ -68,7 +69,8 @@ GitHub's brand guidelines don't allow the Octocat (Mona), the mascots, the Inver
    - A short tap keeps the microphone open until the next tap.
    - `Esc` cancels the recording or stops the voice.
 3. Pick another session in the header to talk to it.
-4. The gear opens **Settings**: language, voice, speed and behavior.
+4. Before a call, press **Mute all messages** (bottom right). Muting from any panel silences every session within a fraction of a second.
+5. The gear opens **Settings**: language, voice, speed and behavior.
 
 Sessions that were already open when you installed or updated Octovox load the new version when you reopen them in the app.
 
@@ -109,6 +111,7 @@ Sessions that were already open when you installed or updated Octovox load the n
 | --- | --- |
 | `artifacts/settings.json` | Behavior settings, shared by every panel. |
 | `artifacts/speech.json` | Language, speed and voice provider. It's a separate file so panels from the first version can't drop it. |
+| `artifacts/muted` | Present while **Mute all messages** is on. Every Octovox process checks it before making a sound. |
 | macOS Keychain, service `Octovox` | API keys, one per provider and host. |
 | `<session state>/octovox/history.jsonl` | Octovox's conversation with that session. Deleted with the session. |
 | `.run/` | Live session registry, alert marks, cached avatar and voice lists, temporary audio, `octovox.log` and `stt.log`. |
@@ -119,7 +122,7 @@ With the canvas open, an agent can call `invoke_canvas_action` with:
 
 - `status`: the status of every session with Octovox (busy or idle, activity, tasks, pending questions).
 - `ask_session`: a side question to another session, without interrupting it.
-- `speak`: reads a short message aloud with the configured voice.
+- `speak`: reads a short message aloud with the configured voice. While messages are muted it says nothing and returns `spoken: false`.
 
 ## Known limitations
 

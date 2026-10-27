@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,7 +10,7 @@ import { after, before, test } from "node:test";
 const home = mkdtempSync(join(tmpdir(), "octovox-test-"));
 process.env.COPILOT_HOME = home;
 
-const { ensureDirs } = await import("../lib/config.mjs");
+const { DATA_DIR, ensureDirs } = await import("../lib/config.mjs");
 const { Hub } = await import("../lib/hub.mjs");
 const { LocalSession } = await import("../lib/local.mjs");
 const { listPeers, removePeer, writePeer } = await import("../lib/peers.mjs");
@@ -496,6 +496,80 @@ test("voice: a failing cloud voice falls back to macOS and tells the panel", asy
     const removed = await call(a, "/api/tts/key", { method: "POST", body: { provider: "foundry", key: "" } });
     assert.deepEqual(removed.body.keys, { foundry: false, openai: false });
     await call(a, "/api/settings", { method: "POST", body: { tts: { provider: "system" } } });
+});
+
+// Resolves with the first server-sent event that matches, while the panel stays connected.
+function nextEvent(node, match, timeoutMs = 8000) {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            req.destroy();
+            reject(new Error("no matching event"));
+        }, timeoutMs);
+        let buffer = "";
+        const req = request({ host: "127.0.0.1", port: node.http.port, path: `/api/events?t=${node.uiToken}` }, (res) => {
+            res.setEncoding("utf8");
+            res.on("data", (chunk) => {
+                buffer += chunk;
+                const parts = buffer.split("\n\n");
+                buffer = parts.pop();
+                for (const part of parts) {
+                    const found = part.match(/^data: (.+)$/m);
+                    const event = found && JSON.parse(found[1]);
+                    if (event && match(event)) {
+                        clearTimeout(timer);
+                        req.destroy();
+                        resolve(event);
+                    }
+                }
+            });
+        });
+        req.on("error", (error) => (error.code === "ECONNRESET" ? null : reject(error)));
+        req.end();
+    });
+}
+
+test("mute all messages: answers and alerts keep coming, but nothing is spoken", async () => {
+    const flag = join(DATA_DIR, "muted");
+    await call(a, "/api/settings", { method: "POST", body: { speak: true, announce: true } });
+    const on = await call(a, "/api/settings", { method: "POST", body: { muted: true } });
+    assert.equal(on.body.settings.muted, true);
+    assert.equal(existsSync(flag), true);
+    played.length = 0;
+    assert.deepEqual((await call(a, "/api/tts/speak", { method: "POST", body: { text: "Hello there, are you listening?" } })).body, { ok: true, spoken: false });
+    const ask = await call(a, "/api/ask", { method: "POST", body: { target: "sess-a", question: "How's it going?" } });
+    assert.deepEqual(ask.body.at(-1), { type: "done", answer: "All good in Coordinator." }, "the answer still shows as text");
+    const test = await call(a, "/api/tts/test", { method: "POST", body: { lang: "en" } });
+    assert.equal(test.body.ok, false);
+    assert.match(test.body.error, /muted/);
+    b.session.processing = true;
+    await call(a, "/api/check-in", { method: "POST", body: {} });
+    const alert = nextEvent(a, (event) => event.type === "announce");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    b.session.emit({ type: "user_input.requested", data: { requestId: "in-mute", question: "Can I deploy now?", choices: ["Yes", "No"] } });
+    assert.equal((await alert).question, "Can I deploy now?", "alerts still reach the panel");
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    assert.deepEqual(played, [], "nothing was spoken or played");
+    b.session.emit({ type: "user_input.completed", data: { requestId: "in-mute" } });
+
+    const off = await call(a, "/api/settings", { method: "POST", body: { muted: false } });
+    assert.equal(off.body.settings.muted, false);
+    assert.equal(existsSync(flag), false);
+    assert.equal((await call(a, "/api/tts/speak", { method: "POST", body: { text: "Voice is back on now.", lang: "en" } })).body.spoken, true);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.deepEqual(played, ["say[en] Voice is back on now."]);
+    await call(a, "/api/settings", { method: "POST", body: { speak: false, announce: false } });
+});
+
+test("mute all messages: muting from another session's panel reaches this one", async () => {
+    const flag = join(DATA_DIR, "muted");
+    const muted = nextEvent(a, (event) => event.type === "settings" && event.settings.muted === true);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    writeFileSync(flag, "muted from another session\n");
+    assert.equal((await muted).settings.muted, true);
+    const unmuted = nextEvent(a, (event) => event.type === "settings" && event.settings.muted === false);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    rmSync(flag);
+    assert.equal((await unmuted).settings.muted, false);
 });
 
 test("a closed session leaves the registry", () => {
