@@ -46,7 +46,7 @@ const canvas = createCanvas({
     id: "octovox",
     displayName: "Octovox · Talk to Copilot",
     description:
-        "Octovox (formerly Walkie): walkie-talkie style push-to-talk voice panel (auto-detect, English, Spanish, Italian, German, French, Portuguese, Dutch, Polish). Ask any running Copilot session how it is going without interrupting it, dictate prompts, answer its pending questions and hear the replies with natural voices (MAI-Voice on Azure AI Foundry or any OpenAI-compatible endpoint).",
+        "Octovox (formerly Walkie): walkie-talkie style push-to-talk voice panel (auto-detect, English, Spanish, Italian, German, French, Portuguese, Dutch, Polish). Ask any running Copilot session how it is going without interrupting it, dictate prompts, answer its pending questions and hear the replies with natural voices (MAI-Voice on Azure AI Foundry or any OpenAI-compatible endpoint). Interview: a live, hands-free voice conversation about any session (GPT-Live on Azure AI Foundry) that follows it in real time and can be interrupted at any moment.",
     inputSchema: {
         type: ["object", "null"],
         properties: {
@@ -95,7 +95,7 @@ const canvas = createCanvas({
         },
         {
             name: "speak",
-            description: "Read a short message aloud to the user with the configured voice (language auto-detected). Says nothing while the user has muted all Octovox messages.",
+            description: "Read a short message aloud to the user with the configured voice (language auto-detected). During an Octovox Interview the live voice says it instead. Says nothing while the user has muted all Octovox messages.",
             inputSchema: {
                 type: "object",
                 properties: { text: { type: "string", minLength: 1, maxLength: 2000 } },
@@ -103,7 +103,8 @@ const canvas = createCanvas({
                 additionalProperties: false,
             },
             handler: guard("speak_failed", async ({ text }) => {
-                return (await hub.say(text)) ? { spoken: true } : { spoken: false, reason: "The user has muted all Octovox messages." };
+                if (await hub.say(text)) return { spoken: true };
+                return { spoken: false, reason: hub.interview.active ? "An Octovox interview is running." : "The user has muted all Octovox messages, or an Octovox interview is using the voice." };
             }),
         },
     ],

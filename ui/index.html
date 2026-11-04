@@ -73,6 +73,15 @@
 
     <main id="log" class="log" aria-live="polite" aria-label="Conversation"></main>
 
+    <main id="live" class="log live-log" aria-label="Interview transcript" hidden>
+        <div class="live-intro">
+            <h2 id="live-title">Live with this session</h2>
+            <p>Talk naturally, in your language, and interrupt whenever you want more detail. Octovox follows the session as it works and checks with it when it needs specifics, without stopping it.</p>
+            <p id="live-meta" class="caption"></p>
+        </div>
+        <div id="live-feed" class="live-feed"></div>
+    </main>
+
     <form id="settings" class="settings" hidden novalidate>
         <div class="subhead"><h2>Settings</h2></div>
 
@@ -213,6 +222,29 @@
             </div>
         </section>
 
+        <section class="group" aria-labelledby="set-interview">
+            <h3 id="set-interview" class="group-title">Interview</h3>
+            <p class="caption">A live, hands-free voice conversation about a session with GPT-Live on Azure AI Foundry. Interrupt it whenever you like. It signs in with Microsoft Entra ID through the Azure CLI.</p>
+            <label class="field"><span class="field-label">Endpoint</span>
+                <input class="input" type="url" name="interview.endpoint" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://<resource>.openai.azure.com">
+                <span class="caption">The Foundry resource with your GPT-Live deployment. Your account needs the Cognitive Services OpenAI User role on it.</span>
+            </label>
+            <div class="field-row">
+                <label class="field"><span class="field-label">Deployment</span>
+                    <input class="input" name="interview.deployment" autocomplete="off" spellcheck="false" placeholder="gpt-live-1">
+                </label>
+                <label class="field"><span class="field-label">Voice</span>
+                    <input class="input" name="interview.voice" list="live-voices" autocomplete="off" spellcheck="false" placeholder="marin">
+                </label>
+            </div>
+            <datalist id="live-voices"><option value="marin"></option><option value="cedar"></option></datalist>
+            <div class="test-row">
+                <button type="button" id="find-live" class="btn"><svg class="oi" aria-hidden="true"><use href="#oi-search-16"/></svg>Find it in my Azure account</button>
+                <span id="find-status" class="note" role="status" hidden></span>
+            </div>
+            <div id="find-results" class="found" hidden></div>
+        </section>
+
         <section class="group" aria-labelledby="set-behavior">
             <h3 id="set-behavior" class="group-title">Behavior</h3>
             <label class="check"><input type="checkbox" name="speak">
@@ -249,7 +281,7 @@
     </div>
 
     <footer class="dock">
-        <div class="segmented" role="radiogroup" aria-label="What the talk button does">
+        <div class="segmented live-hide" role="radiogroup" aria-label="What the talk button does">
             <button type="button" class="seg" data-mode="ask" role="radio" aria-checked="true" title="Side question: the session answers without stopping what it's doing">
                 <svg class="oi" aria-hidden="true"><use href="#oi-comment-discussion-16"/></svg><span>Ask</span>
             </button>
@@ -260,25 +292,45 @@
                 <svg class="oi" aria-hidden="true"><use href="#oi-reply-16"/></svg><span>Reply</span>
             </button>
         </div>
+        <div class="live-status live-only" role="status">
+            <span class="live-dot" aria-hidden="true"></span>
+            <strong id="live-label">Connecting…</strong>
+            <span id="live-time" class="live-time"></span>
+        </div>
         <div class="ptt-row">
-            <button type="button" id="check-in" class="btn btn-sm" title="Ask every working session how it's going">
-                <svg class="oi" aria-hidden="true"><use href="#oi-broadcast-16"/></svg>Check-in
-            </button>
+            <div class="ptt-side ptt-start">
+                <button type="button" id="check-in" class="btn btn-sm live-hide" title="Ask every working session how it's going">
+                    <svg class="oi" aria-hidden="true"><use href="#oi-broadcast-16"/></svg>Check-in
+                </button>
+                <button type="button" id="interview" class="btn btn-sm btn-live live-hide" title="Talk live with Octovox about this session, and interrupt it any time (GPT-Live)">
+                    <svg class="oi" aria-hidden="true"><use href="#ov-live"/></svg>Interview
+                </button>
+                <button type="button" id="live-mic" class="btn btn-sm live-only" aria-pressed="false" title="Turn your microphone off (M)">
+                    <svg class="oi" aria-hidden="true"><use id="live-mic-icon" href="#ov-mic"/></svg><span id="live-mic-text">Mute</span>
+                </button>
+                <button type="button" id="live-over" class="btn btn-sm live-only" title="No echo cancellation: lets your voice through for 5 seconds while Octovox speaks (or hold Space)" hidden>
+                    <svg class="oi" aria-hidden="true"><use href="#oi-unmute-16"/></svg>Talk over
+                </button>
+            </div>
             <button type="button" id="ptt" class="ptt" aria-label="Hold to talk" aria-pressed="false">
                 <span class="ptt-ring" aria-hidden="true"></span>
                 <span class="bars" aria-hidden="true"><i style="--i:0;--rest:.3"></i><i style="--i:1;--rest:.55"></i><i style="--i:2;--rest:.9"></i><i style="--i:3;--rest:.65"></i><i style="--i:4;--rest:1"></i><i style="--i:5;--rest:.75"></i><i style="--i:6;--rest:.5"></i><i style="--i:7;--rest:.3"></i></span>
+                <svg class="ptt-mic-off" aria-hidden="true"><use href="#ov-mic-off"/></svg>
             </button>
             <div class="ptt-side">
-                <button type="button" id="hush" class="btn btn-sm" title="Stop speaking (Esc)" disabled>
+                <button type="button" id="hush" class="btn btn-sm live-hide" title="Stop speaking (Esc)" disabled>
                     <svg class="oi" aria-hidden="true"><use href="#oi-square-fill-16"/></svg>Stop
                 </button>
-                <button type="button" id="mute-all" class="btn btn-sm btn-mute" aria-pressed="false" aria-label="Mute all messages">
+                <button type="button" id="mute-all" class="btn btn-sm btn-mute live-hide" aria-pressed="false" aria-label="Mute all messages">
                     <svg class="oi" aria-hidden="true"><use href="#oi-mute-16"/></svg><span class="long">Mute all messages</span><span class="short">Mute all</span>
+                </button>
+                <button type="button" id="live-end" class="btn btn-sm btn-danger live-only" title="End the interview">
+                    <svg class="oi" aria-hidden="true"><use href="#oi-x-16"/></svg>End
                 </button>
             </div>
         </div>
         <p id="hint" class="hint" aria-live="polite"></p>
-        <form id="compose" class="composer">
+        <form id="compose" class="composer live-hide">
             <textarea id="text" rows="1" placeholder="…or type it here" aria-label="Message"></textarea>
             <button type="submit" id="send" class="btn-icon send" aria-label="Ask" title="Ask (Enter)">
                 <svg class="oi" aria-hidden="true"><use href="#oi-paper-airplane-16"/></svg>

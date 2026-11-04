@@ -35,6 +35,8 @@ test("detectLanguage falls back when the evidence is weak", () => {
     assert.equal(detectLanguage("OK", { fallback: "es" }), "es");
     assert.equal(detectLanguage("Kubernetes"), null);
     assert.equal(detectLanguage("oye, qué has encontrado en la api"), "es");
+    // Live transcripts drop "¿" and accents; "y", "si" and "se" alone would tie with French.
+    assert.equal(detectLanguage("Espera, espera. Y si se cae Redis", { fallback: "en" }), "es");
     assert.equal(detectLanguage("please run the unit tests and open a pull request"), "en");
     assert.equal(detectLanguage("Wie läuft es mit den Tests?", { candidates: ["en", "es"], fallback: "en" }), "en");
 });

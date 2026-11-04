@@ -294,6 +294,21 @@ test("per-session history with questions, prompts and answers", async () => {
     assert.equal(body.items[0].a, "All good in Payments API.");
 });
 
+test("interview transcripts show with the session they were about, whichever panel ran them", async () => {
+    const interview = (target, seconds) => ({ kind: "interview", target, targetName: target, seconds, turns: [], lookups: [] });
+    await b.local.record(interview("sess-c", 30)); // B's panel, about another session
+    await b.local.record(interview("sess-b", 40)); // B's panel, about B
+    await a.local.record(interview("sess-b", 50)); // this panel, about B
+    await a.local.record(interview("sess-a", 60)); // this panel, about itself
+    const seconds = async (target) =>
+        (await call(a, `/api/history?target=${target}&limit=50`)).body.items
+            .filter((item) => item.kind === "interview")
+            .map((item) => item.seconds)
+            .sort((x, y) => x - y);
+    assert.deepEqual(await seconds("sess-b"), [40, 50]);
+    assert.deepEqual(await seconds("sess-a"), [60]);
+});
+
 test("check-in: asks every busy session", async () => {
     const { body } = await call(a, "/api/check-in", { method: "POST", body: {} });
     const peers = body.filter((item) => item.type === "peer");

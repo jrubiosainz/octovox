@@ -4,6 +4,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const $ = (id) => document.getElementById(id);
 
 const el = {
+    app: document.querySelector(".app"),
     picker: $("picker"),
     pickerState: $("picker-state"),
     pickerLabel: $("picker-label"),
@@ -33,6 +34,21 @@ const el = {
     pdQuestion: $("pd-question"),
     pdChoices: $("pd-choices"),
     log: $("log"),
+    live: $("live"),
+    liveTitle: $("live-title"),
+    liveMeta: $("live-meta"),
+    liveFeed: $("live-feed"),
+    liveLabel: $("live-label"),
+    liveTime: $("live-time"),
+    liveOver: $("live-over"),
+    liveEnd: $("live-end"),
+    liveMic: $("live-mic"),
+    liveMicIcon: $("live-mic-icon"),
+    liveMicText: $("live-mic-text"),
+    interview: $("interview"),
+    findLive: $("find-live"),
+    findStatus: $("find-status"),
+    findResults: $("find-results"),
     flash: $("flash"),
     flashIcon: $("flash-icon"),
     flashText: $("flash-text"),
@@ -77,10 +93,38 @@ const EVENT_STYLES = {
     form: ["bell-fill-16", "attention"],
     error: ["x-circle-fill-16", "danger"],
     info: ["info-16", ""],
+    update: ["sync-16", ""],
+    note: ["bell-fill-16", "attention"],
+    agentDone: ["agent-16", "success"],
+    agentFailed: ["agent-16", "danger"],
 };
 // Each bar moves at its own pace so the wave reads as a voice, not a level meter.
 const BAR_SPEED = [5.1, 6.3, 4.4, 7.0, 5.6, 4.8, 6.6, 5.2];
 const BAR_PHASE = [0, 1.7, 0.6, 2.4, 1.1, 2.9, 0.3, 2.0];
+// Interview levels (0..1 on a dB scale): above these, Octovox or the user is talking.
+const SPEAKING_LEVEL = 0.3;
+const HEARING_LEVEL = 0.35;
+const LIVE_LABELS = { preparing: "Getting ready…", connecting: "Connecting to GPT-Live…", live: "Live", ending: "Ending…" };
+const LIVE_HINT = "Talk naturally, in your language. Interrupt Octovox any time.";
+const END_NOTES = {
+    idle: "The interview ended after 10 minutes without hearing you.",
+    closed: "The interview ended because the Octovox panel was closed.",
+    muted: "The interview ended because all messages were muted.",
+};
+const freshLive = () => ({
+    state: "idle", // idle | preparing | connecting | live | ending
+    target: null,
+    targetName: "",
+    startedAt: null,
+    micMuted: false,
+    echoCancellation: null,
+    notice: null,
+    error: null,
+    in: 0,
+    out: 0,
+    checking: new Set(),
+    overUntil: 0,
+});
 
 const state = {
     selfId: null,
@@ -108,6 +152,7 @@ const state = {
     composerDictated: false,
     pickerSig: "",
     avatarFailed: false,
+    live: freshLive(),
 };
 
 // --- Theme: light or dark from the background the app really paints ---
@@ -349,8 +394,8 @@ function avatar(who) {
 
 // --- Conversation ---
 
-function nearBottom() {
-    return el.log.scrollHeight - el.log.scrollTop - el.log.clientHeight < 80;
+function nearBottom(container = el.log) {
+    return container.scrollHeight - container.scrollTop - container.clientHeight < 80;
 }
 
 function append(node) {
@@ -404,6 +449,10 @@ function updateMessage(node, text, { error = false } = {}) {
 }
 
 function addEvent(kind, content, ts = Date.now()) {
+    return append(eventNode(kind, content, ts));
+}
+
+function eventNode(kind, content, ts = Date.now()) {
     const [iconName, tone] = EVENT_STYLES[kind] ?? EVENT_STYLES.info;
     const node = make("div", "event");
     const badge = make("span", `badge${tone ? ` ${tone}` : ""}`);
@@ -413,7 +462,7 @@ function addEvent(kind, content, ts = Date.now()) {
     else text.append(...content);
     text.append(" · ", timeEl(ts));
     node.append(badge, text);
-    return append(node);
+    return node;
 }
 
 // Alerts arrive as data; the panel words them in English (the spoken version follows your language).
@@ -475,16 +524,39 @@ async function loadHistory() {
         const ts = Date.parse(item.at) || Date.now();
         const voice = item.via === "voice" ? "by voice" : undefined;
         if (item.kind === "ask") {
-            const tag = item.via === "check-in" || item.via === "ronda" ? "Check-in" : item.via === "agent" ? "Agent" : undefined;
+            const tag = item.via === "check-in" || item.via === "ronda" ? "Check-in" : item.via === "agent" ? "Agent" : item.via === "interview" ? "Interview" : undefined;
             message({ who: "me", text: item.q, tag, meta: voice, ts });
             if (item.a) message({ who: "copilot", text: item.a, ts: ts + (item.ms ?? 0), replay: true });
         } else if (item.kind === "prompt") {
             message({ who: "me", text: item.q, tag: "Prompt", meta: voice, ts });
         } else if (item.kind === "answer") {
             addEvent("answered", ["You answered ", make("strong", "", `“${item.a}”`), ` to “${oneLine(item.q, 90)}”`], ts);
+        } else if (item.kind === "interview") {
+            interviewCard(item, ts);
         }
     }
     el.log.scrollTop = el.log.scrollHeight;
+}
+
+// A finished interview: its transcript, folded, like a check run you can expand.
+function interviewCard({ targetName: name, seconds = 0, turns = [], lookups = [] }, ts = Date.now()) {
+    const node = make("article", "msg");
+    const head = make("div", "msg-head");
+    head.append(make("span", "author", "Octovox"), make("span", "label", "Interview"), make("span", "", "·"), timeEl(ts));
+    const box = make("details", "checks transcript");
+    const summary = make("summary", "checks-head");
+    const facts = [fmtRun(seconds * 1000), lookups.length ? `${lookups.length} ${lookups.length === 1 ? "lookup" : "lookups"}` : null].filter(Boolean).join(" · ");
+    summary.append(icon("ov-live"), make("strong", "", name || "Session"), make("span", "", facts), icon("triangle-down-16", "oi caret"));
+    box.append(summary);
+    for (const turn of turns) {
+        const line = make("div", `transcript-line${turn.role === "user" ? " user" : ""}`);
+        line.append(make("strong", "", turn.role === "user" ? "You" : "Octovox"), make("span", "", turn.text));
+        box.append(line);
+    }
+    if (!turns.length) box.append(make("div", "transcript-line", "Nothing was said."));
+    node.append(avatar("brand"), head, box);
+    node.dataset.text = "";
+    return append(node);
 }
 
 let flashTimer;
@@ -643,6 +715,10 @@ function setMode(mode, { persist = true } = {}) {
 }
 
 function renderControls() {
+    if (liveActive()) {
+        renderLive();
+        return;
+    }
     const listening = state.rec === "starting" || state.rec === "recording";
     el.ptt.classList.toggle("recording", listening);
     el.ptt.classList.toggle("working", !listening && (state.rec === "transcribing" || state.busy > 0));
@@ -859,6 +935,333 @@ async function toggleMute() {
         flash(`Couldn't change Mute all messages: ${error.message}`, "error");
     }
     renderMute();
+}
+
+// --- Interview: a live voice conversation (GPT-Live) about the selected session ---
+
+const liveActive = () => state.live.state !== "idle";
+const liveTurns = new Map();
+const liveLookups = new Map();
+let liveTimer = null;
+let lastUpdateRow = null;
+
+const setText = (node, text) => {
+    if (node.textContent !== text) node.textContent = text;
+};
+
+function applyLive(head) {
+    const { type, kind, turns, lookups, ...rest } = head ?? {};
+    Object.assign(state.live, rest);
+}
+
+function liveAppend(node) {
+    const stick = nearBottom(el.live);
+    el.liveFeed.append(node);
+    if (stick) el.live.scrollTop = el.live.scrollHeight;
+    return node;
+}
+
+function enterLive() {
+    el.app.classList.add("live-mode");
+    liveTurns.clear();
+    liveLookups.clear();
+    lastUpdateRow = null;
+    el.liveFeed.replaceChildren();
+    if (state.rec !== "idle") cancelRec();
+    if (!el.pickerPanel.hidden) closePicker({ focus: false });
+    el.log.hidden = true;
+    el.live.hidden = !el.settings.hidden;
+    el.live.scrollTop = 0;
+    clearInterval(liveTimer);
+    liveTimer = setInterval(renderLiveTime, 1000);
+}
+
+function exitLive() {
+    clearInterval(liveTimer);
+    liveTimer = null;
+    el.app.classList.remove("live-mode");
+    delete el.app.dataset.live;
+    el.live.hidden = true;
+    el.log.hidden = !el.settings.hidden;
+    el.log.scrollTop = el.log.scrollHeight;
+    liveTurns.clear();
+    liveLookups.clear();
+    lastUpdateRow = null;
+    el.liveFeed.replaceChildren();
+    el.ptt.classList.remove("live", "speaking", "user", "checking", "muted");
+    el.ptt.disabled = false;
+    el.ptt.removeAttribute("title");
+    el.ptt.setAttribute("aria-label", "Hold to talk");
+    el.picker.disabled = false;
+    el.picker.title = "Session you're talking to";
+    state.live = freshLive();
+    renderControls();
+}
+
+function renderLiveTime() {
+    const { startedAt, state: phase } = state.live;
+    if (phase !== "live" || !startedAt) return setText(el.liveTime, "");
+    const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+    setText(el.liveTime, `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`);
+}
+
+function liveMeta() {
+    const cfg = state.settings?.interview;
+    const parts = [cfg?.deployment || "GPT-Live", cfg?.voice ? `${cfg.voice} voice` : null];
+    if (state.live.echoCancellation === true) parts.push("echo cancellation on");
+    else if (state.live.echoCancellation === false) parts.push("no echo cancellation, so headphones work best");
+    return parts.filter(Boolean).join(" · ");
+}
+
+function renderLive() {
+    const live = state.live;
+    const on = live.state === "live";
+    const speaking = on && live.out > SPEAKING_LEVEL;
+    const checking = on && live.checking.size > 0;
+    el.app.dataset.live = live.state;
+    setText(el.liveLabel, LIVE_LABELS[live.state] ?? "Live");
+    setText(el.liveTitle, `Live with ${live.targetName || targetName()}`);
+    setText(el.liveMeta, liveMeta());
+    renderLiveTime();
+    el.ptt.classList.add("live");
+    el.ptt.classList.remove("recording");
+    el.ptt.classList.toggle("working", !on);
+    el.ptt.classList.toggle("speaking", speaking);
+    el.ptt.classList.toggle("user", on && !speaking && !live.micMuted && live.in > HEARING_LEVEL);
+    el.ptt.classList.toggle("checking", checking);
+    el.ptt.classList.toggle("muted", on && live.micMuted);
+    el.ptt.disabled = !on;
+    el.ptt.setAttribute("aria-pressed", String(on && live.micMuted));
+    el.ptt.setAttribute("aria-label", on ? (live.micMuted ? "Turn your microphone on" : "Turn your microphone off") : (LIVE_LABELS[live.state] ?? "Interview"));
+    el.ptt.title = on ? (live.micMuted ? "Turn your microphone on (M)" : "Turn your microphone off (M)") : "";
+    el.liveOver.hidden = !(on && live.echoCancellation === false);
+    el.liveMic.disabled = !on;
+    el.liveMic.setAttribute("aria-pressed", String(on && live.micMuted));
+    el.liveMic.title = live.micMuted ? "Turn your microphone on (M)" : "Turn your microphone off (M)";
+    el.liveMicIcon.setAttribute("href", live.micMuted ? "#ov-mic-off" : "#ov-mic");
+    setText(el.liveMicText, live.micMuted ? "Unmute" : "Mute");
+    el.picker.disabled = true;
+    el.picker.title = "End the interview to talk to another session";
+    let hint = LIVE_HINT;
+    if (live.state === "ending") hint = "Ending the interview…";
+    else if (!on) hint = live.notice || "Connecting to GPT-Live. This takes a few seconds.";
+    else if (live.micMuted) hint = "Your microphone is off. Tap the orb or press M to talk.";
+    else if (Date.now() < live.overUntil) hint = "Go ahead: Octovox hears you over its own voice for a few seconds.";
+    else if (checking) hint = `Checking with ${live.targetName || "the session"}…`;
+    else if (live.notice) hint = live.notice;
+    setText(el.hint, hint);
+    el.hint.classList.remove("live");
+}
+
+function showLiveLevel({ in: input = 0, out = 0 }) {
+    state.live.in = input;
+    state.live.out = out;
+    if (state.live.state !== "live") return;
+    renderLive();
+    showLevel(out > SPEAKING_LEVEL ? out : state.live.micMuted ? 0 : input);
+}
+
+function liveTurnNode(role) {
+    const node = make("article", `msg${role === "user" ? " mine" : ""}`);
+    const head = make("div", "msg-head");
+    head.append(make("span", "author", role === "user" ? state.user?.login || "You" : "Octovox"));
+    node.append(avatar(role === "user" ? "me" : "brand"), head, make("div", "msg-body"));
+    return node;
+}
+
+function upsertTurn({ id, role, text }) {
+    let node = liveTurns.get(id);
+    if (!node) {
+        node = liveAppend(liveTurnNode(role));
+        liveTurns.set(id, node);
+        lastUpdateRow = null;
+    }
+    const stick = nearBottom(el.live);
+    node.querySelector(".msg-body").textContent = text;
+    if (stick) el.live.scrollTop = el.live.scrollHeight;
+}
+
+// What Octovox asked the session (folded) and its answer, like a step in a workflow log.
+function upsertLookup(lookup) {
+    let entry = liveLookups.get(lookup.id);
+    if (!entry) {
+        const node = make("div", "event lookup");
+        const badge = make("span", "badge");
+        const text = make("div", "event-text");
+        const line = make("div");
+        const details = make("details");
+        const summary = make("summary");
+        const answer = make("p", "lookup-answer");
+        details.append(summary, answer);
+        text.append(line, details);
+        node.append(badge, text);
+        entry = { badge, line, details, summary, answer };
+        liveLookups.set(lookup.id, entry);
+        liveAppend(node);
+        lastUpdateRow = null;
+    }
+    const name = make("strong", "", state.live.targetName || "the session");
+    const done = lookup.state === "done";
+    const failed = lookup.state === "error";
+    entry.badge.className = `badge${done ? " success" : failed ? " danger" : ""}`;
+    entry.badge.replaceChildren(done ? icon("check-16") : failed ? icon("x-circle-fill-16") : make("span", "spin"));
+    entry.line.replaceChildren(...(done ? ["Checked with ", name] : failed ? ["Couldn't check with ", name, `: ${lookup.error ?? "no answer"}`] : ["Checking with ", name, "…"]));
+    entry.summary.replaceChildren(icon("triangle-down-16", "oi caret"), make("span", "", lookup.question ? `“${oneLine(lookup.question, 200)}”` : "The question"));
+    entry.answer.textContent = String(lookup.answer ?? "").trim() || "Waiting for the session…";
+    entry.details.hidden = failed && !lookup.answer;
+    if (lookup.state === "asking") state.live.checking.add(lookup.id);
+    else state.live.checking.delete(lookup.id);
+    renderLive();
+}
+
+// The session keeps working during the interview: its latest step, in one row that updates in place.
+function addLiveUpdate({ lines = [] }) {
+    const latest = lines.at(-1);
+    if (!latest) return;
+    const content = [make("strong", "", state.live.targetName || "The session"), `: ${oneLine(latest, 200)}`];
+    if (lastUpdateRow && lastUpdateRow === el.liveFeed.lastElementChild) {
+        lastUpdateRow.querySelector(".event-text").replaceChildren(...content, " · ", timeEl(Date.now()));
+        return;
+    }
+    lastUpdateRow = liveAppend(eventNode("update", content));
+}
+
+// Alerts, and news from the session's helper agents (said out loud by Octovox as they arrive).
+function addLiveNote({ text, source, tone }) {
+    lastUpdateRow = null;
+    if (source === "agent") {
+        const content = [make("strong", "", state.live.targetName || "The session"), `: ${oneLine(text, 240)}`];
+        liveAppend(eventNode(tone === "danger" ? "agentFailed" : "agentDone", content));
+        return;
+    }
+    liveAppend(eventNode("note", oneLine(text, 300)));
+}
+
+function restoreLive(snapshot) {
+    for (const turn of snapshot.turns ?? []) upsertTurn(turn);
+    for (const lookup of snapshot.lookups ?? []) upsertLookup(lookup);
+}
+
+function endedInterview(event) {
+    if (!event.wasLive) return;
+    interviewCard(event);
+    if (event.error) addEvent("error", event.error);
+    else if (END_NOTES[event.reason]) addEvent("info", END_NOTES[event.reason]);
+}
+
+async function startInterview() {
+    if (liveActive() || !state.settings) return;
+    // Panels served by an older Octovox process don't know Interview yet.
+    if (state.settings.interview === undefined) {
+        flash("This session still runs an older Octovox. Restart the GitHub Copilot app to use Interview.", "warn");
+        return;
+    }
+    if (state.settings.muted) {
+        flash("Turn off “Mute all messages” to start an interview.", "warn");
+        return;
+    }
+    if (!state.settings.interview.endpoint) {
+        toggleSettings(true);
+        $("set-interview").scrollIntoView({ block: "start" });
+        flash("Set up Interview first: add your GPT-Live endpoint, or find it in your Azure account.", "warn");
+        return;
+    }
+    hush();
+    const peer = currentPeer();
+    state.live = { ...freshLive(), state: "preparing", target: state.target, targetName: peer ? label(peer) : "this session" };
+    enterLive();
+    renderLive();
+    try {
+        await api("/api/interview/start", { target: state.target, lang: currentLanguage() });
+    } catch (error) {
+        if (liveActive() && state.live.state !== "live") exitLive();
+        flash(error.message, "error");
+    }
+}
+
+async function endInterview() {
+    if (!liveActive() || state.live.state === "ending") return;
+    state.live.state = "ending";
+    renderLive();
+    try {
+        await api("/api/interview/stop", {});
+    } catch (error) {
+        flash(`Couldn't end the interview cleanly: ${error.message}`, "error");
+        exitLive();
+    }
+}
+
+async function toggleLiveMic() {
+    if (state.live.state !== "live") return;
+    const muted = !state.live.micMuted;
+    state.live.micMuted = muted;
+    renderLive();
+    try {
+        applyLive(await api("/api/interview/mic", { muted }));
+    } catch (error) {
+        state.live.micMuted = !muted;
+        flash(error.message, "error");
+    }
+    renderLive();
+}
+
+// Without echo cancellation the mic is held while Octovox speaks: this lets the user through.
+function talkOver() {
+    if (state.live.state !== "live") return;
+    state.live.overUntil = Date.now() + 5000;
+    renderLive();
+    setTimeout(() => liveActive() && renderLive(), 5100);
+    api("/api/interview/interrupt", {}).catch((error) => flash(error.message, "error"));
+}
+
+async function findLive() {
+    if (state.settings?.interview === undefined) {
+        setNote(el.findStatus, "This session still runs an older Octovox. Restart the GitHub Copilot app first.", { tone: "attention", icon: "alert-fill-16" });
+        return;
+    }
+    el.findLive.disabled = true;
+    el.findResults.hidden = true;
+    setNote(el.findStatus, "Looking through your Azure subscriptions…", { spin: true });
+    try {
+        const result = await api("/api/interview/find");
+        if (result.error) throw new Error(result.error);
+        const found = result.deployments ?? [];
+        if (!found.length) {
+            setNote(el.findStatus, `No GPT-Live deployment in the ${result.scanned ?? 0} AI resources you can see. Deploy gpt-live-1 in Azure AI Foundry, then try again.`, {
+                tone: "attention",
+                icon: "alert-fill-16",
+            });
+        } else if (found.length === 1) {
+            await useLiveDeployment(found[0]);
+        } else {
+            setNote(el.findStatus, `Found ${found.length} GPT-Live deployments. Pick one:`, { tone: "success", icon: "check-circle-fill-16" });
+            el.findResults.replaceChildren(
+                ...found.map((item) => {
+                    const button = make("button", "btn found-item");
+                    button.type = "button";
+                    button.append(make("span", "", `${item.resource} · ${item.deployment}`), make("span", "caption", [item.location, item.version].filter(Boolean).join(" · ")));
+                    button.addEventListener("click", () => useLiveDeployment(item));
+                    return button;
+                }),
+            );
+            el.findResults.hidden = false;
+        }
+    } catch (error) {
+        setNote(el.findStatus, error.message, { tone: "danger", icon: "x-circle-fill-16" });
+    } finally {
+        el.findLive.disabled = false;
+    }
+}
+
+async function useLiveDeployment(item) {
+    try {
+        state.settings = (await api("/api/settings", { interview: { endpoint: item.endpoint, deployment: item.deployment } })).settings;
+        fillSettings();
+        el.findResults.hidden = true;
+        setNote(el.findStatus, `Using ${item.deployment} on ${item.resource}.`, { tone: "success", icon: "check-circle-fill-16" });
+    } catch (error) {
+        setNote(el.findStatus, error.message, { tone: "danger", icon: "x-circle-fill-16" });
+    }
 }
 
 function appendToComposer(text) {
@@ -1203,7 +1606,8 @@ async function saveField(field) {
 
 function toggleSettings(open = el.settings.hidden) {
     el.settings.hidden = !open;
-    el.log.hidden = open;
+    el.log.hidden = open || liveActive();
+    el.live.hidden = open || !liveActive();
     el.openSettings.setAttribute("aria-expanded", String(open));
     if (open) {
         fillSettings();
@@ -1246,7 +1650,8 @@ const handlers = {
     },
     peers: ({ peers }) => {
         state.peers = peers;
-        if (state.peers.length && !state.peers.some((peer) => peer.sessionId === state.target)) {
+        // During an interview the picker stays on its session, even if that session goes away.
+        if (!liveActive() && state.peers.length && !state.peers.some((peer) => peer.sessionId === state.target)) {
             flash("That session isn't available anymore, so I switched back to this one.", "warn");
             state.target = state.selfId;
             state.pendingRequestId = null;
@@ -1257,6 +1662,36 @@ const handlers = {
     },
     announce: (event) => addEvent(event.kind ?? "info", announcement(event), event.at),
     notice: ({ text, tone }) => flash(text, tone === "error" ? "error" : tone === "warn" ? "warn" : "info"),
+    interview: (event) => {
+        switch (event.kind) {
+            case "snapshot":
+            case "state": {
+                const was = state.live.state;
+                if (event.state === "idle") {
+                    if (was !== "idle") exitLive();
+                    return;
+                }
+                applyLive(event);
+                if (was === "idle") enterLive();
+                if (event.kind === "snapshot") restoreLive(event);
+                renderLive();
+                return;
+            }
+            case "level":
+                return showLiveLevel(event);
+            case "turn":
+                return liveActive() && upsertTurn(event);
+            case "lookup":
+                return liveActive() && upsertLookup(event);
+            case "update":
+                return liveActive() && addLiveUpdate(event);
+            case "note":
+                return liveActive() && addLiveNote(event);
+            case "ended":
+                return endedInterview(event);
+            default:
+        }
+    },
 };
 
 function connect() {
@@ -1282,7 +1717,7 @@ function connect() {
 // --- Wiring ---
 
 el.ptt.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || liveActive()) return;
     event.preventDefault();
     el.ptt.setPointerCapture?.(event.pointerId);
     pressStart();
@@ -1290,23 +1725,33 @@ el.ptt.addEventListener("pointerdown", (event) => {
 el.ptt.addEventListener("pointerup", () => pressEnd());
 el.ptt.addEventListener("pointercancel", () => pressEnd({ cancelled: true }));
 el.ptt.addEventListener("contextmenu", (event) => event.preventDefault());
+// During an interview the orb is a plain button: it turns the microphone off and on.
+el.ptt.addEventListener("click", () => {
+    if (liveActive()) toggleLiveMic();
+});
 el.ptt.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter") return;
+    if (event.key !== "Enter" || liveActive()) return;
     event.preventDefault();
     if (!event.repeat) pressStart();
 });
 el.ptt.addEventListener("keyup", (event) => {
-    if (event.key !== "Enter") return;
+    if (event.key !== "Enter" || liveActive()) return;
     event.preventDefault();
     pressEnd();
 });
 
 const typing = (target) => target instanceof HTMLElement && (target.matches("textarea, input, select") || target.isContentEditable);
 const inMenu = (target) => target instanceof HTMLElement && !!target.closest(".overlay");
+const plainKey = (event) => !event.metaKey && !event.ctrlKey && !event.altKey;
 document.addEventListener("keydown", (event) => {
-    if (event.code === "Space" && !typing(event.target) && !inMenu(event.target) && !event.metaKey && !event.ctrlKey && !event.altKey) {
+    if (event.code === "Space" && !typing(event.target) && !inMenu(event.target) && plainKey(event)) {
         event.preventDefault();
-        if (!event.repeat) pressStart();
+        if (event.repeat) return;
+        if (!liveActive()) pressStart();
+        else if (state.live.echoCancellation === false) talkOver();
+    } else if (event.code === "KeyM" && liveActive() && !typing(event.target) && plainKey(event) && !event.shiftKey) {
+        event.preventDefault();
+        if (!event.repeat) toggleLiveMic();
     } else if (event.key === "Escape") {
         if (state.rec === "recording" || state.rec === "starting") cancelRec();
         else if (!el.pickerPanel.hidden) closePicker();
@@ -1345,6 +1790,11 @@ document.addEventListener("pointerdown", (event) => {
 
 for (const button of el.modes) button.addEventListener("click", () => setMode(button.dataset.mode));
 el.checkIn.addEventListener("click", checkIn);
+el.interview.addEventListener("click", startInterview);
+el.liveEnd.addEventListener("click", endInterview);
+el.liveOver.addEventListener("click", talkOver);
+el.liveMic.addEventListener("click", toggleLiveMic);
+el.findLive.addEventListener("click", findLive);
 el.hush.addEventListener("click", hush);
 el.muteAll.addEventListener("click", toggleMute);
 el.compose.addEventListener("submit", (event) => {

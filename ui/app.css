@@ -875,6 +875,10 @@ button {
     line-height: 24px;
 }
 
+.group > p.caption {
+    margin: -4px 0 0;
+}
+
 .field {
     display: grid;
     gap: 6px;
@@ -1258,16 +1262,17 @@ input[type="range"] {
     gap: 16px;
 }
 
-#check-in {
-    justify-self: start;
-}
-
-/* Stop, and the "Mute all messages" switch under it for calls. */
+/* Check-in and Interview on the left; Stop and "Mute all messages" (for calls) on the right. */
 .ptt-side {
     justify-self: end;
     display: grid;
     justify-items: end;
     gap: 6px;
+}
+
+.ptt-side.ptt-start {
+    justify-self: start;
+    justify-items: start;
 }
 
 .btn-mute .short {
@@ -1435,9 +1440,348 @@ input[type="range"] {
     color: var(--muted);
 }
 
+/* Interview: a live voice conversation. The talk button becomes the live orb, Ask / Prompt become
+   the live status and the conversation shows captions and what Octovox checks with the session. */
+.app:not(.live-mode) .live-only {
+    display: none !important;
+}
+
+.app.live-mode .live-hide {
+    display: none !important;
+}
+
+.btn-live .oi {
+    color: var(--copilot-fg);
+}
+
+.btn-live:hover:not(:disabled) {
+    border-color: var(--copilot-muted);
+    background: var(--copilot-subtle);
+}
+
+.btn-danger {
+    border-color: color-mix(in srgb, #000 18%, var(--danger-emphasis));
+    background: var(--danger-emphasis);
+    color: var(--on-emphasis);
+}
+
+.btn-danger .oi {
+    color: inherit;
+}
+
+.btn-danger:hover:not(:disabled) {
+    background: color-mix(in srgb, #000 12%, var(--danger-emphasis));
+}
+
+.btn-danger:active:not(:disabled) {
+    background: color-mix(in srgb, #000 20%, var(--danger-emphasis));
+}
+
+.picker-btn:disabled {
+    cursor: default;
+}
+
+.live-status {
+    display: inline-flex;
+    justify-self: center;
+    align-items: center;
+    gap: 8px;
+    height: 32px;
+    padding: 0 12px 0 11px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg);
+    box-shadow: 0 1px 1px var(--shadow);
+    font-size: 12px;
+    line-height: 18px;
+}
+
+.live-status strong {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.live-time {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.live-time:empty {
+    display: none;
+}
+
+.live-dot {
+    position: relative;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--attention);
+    color: var(--attention);
+}
+
+.app[data-live="live"] .live-dot {
+    background: var(--copilot-fg);
+    color: var(--copilot-fg);
+}
+
+.app[data-live="live"] .live-dot::after {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border: 1.5px solid currentColor;
+    border-radius: 50%;
+    animation: live-pulse 2400ms cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.app[data-live="ending"] .live-dot {
+    background: var(--muted);
+    color: var(--muted);
+}
+
+@keyframes live-pulse {
+    0% {
+        opacity: 0.8;
+        transform: scale(0.5);
+    }
+
+    100% {
+        opacity: 0;
+        transform: scale(1.7);
+    }
+}
+
+/* The orb: listening is quiet purple; when Octovox talks it fills like the talk button, and while it
+   checks with the session an arc circles it. Tapping it turns the microphone off and on. */
+.ptt.live {
+    background: var(--copilot-subtle);
+    color: var(--copilot-fg);
+    box-shadow: inset 0 0 0 1px var(--copilot-muted), 0 6px 16px -10px color-mix(in srgb, var(--copilot) 55%, transparent);
+}
+
+.ptt.live:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--copilot) 18%, var(--bg));
+}
+
+.ptt.live.speaking {
+    background: var(--copilot);
+    color: #ffffff;
+    box-shadow: 0 1px 2px var(--shadow-strong), 0 10px 24px -8px color-mix(in srgb, var(--copilot) 75%, transparent);
+}
+
+.ptt.live.speaking:hover:not(:disabled) {
+    background: var(--copilot-hover);
+}
+
+.ptt.live .ptt-ring {
+    border-color: var(--copilot-fg);
+}
+
+.ptt.live.user .ptt-ring {
+    opacity: calc(0.2 + var(--level) * 0.8);
+}
+
+.ptt.live.checking .ptt-ring {
+    inset: -6px;
+    opacity: 1;
+    border-color: var(--copilot-muted);
+    border-top-color: var(--copilot-fg);
+    animation: spin 1100ms linear infinite;
+}
+
+.ptt.live.muted {
+    background: var(--inset);
+    color: var(--muted);
+    box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.ptt.live.muted:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--fg) 11%, var(--bg));
+    color: var(--fg);
+}
+
+#live-mic[aria-pressed="true"] {
+    border-color: var(--attention-muted);
+    background: var(--attention-subtle);
+}
+
+#live-mic[aria-pressed="true"] .oi {
+    color: var(--attention);
+}
+
+.ptt-mic-off {
+    display: none;
+    width: 28px;
+    height: 28px;
+    fill: currentColor;
+}
+
+.ptt.live.muted .bars {
+    display: none;
+}
+
+.ptt.live.muted .ptt-mic-off {
+    display: block;
+}
+
+.live-intro {
+    display: grid;
+    gap: 6px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border-muted);
+}
+
+.live-intro h2 {
+    margin: 0;
+    font-family: var(--brand-font);
+    font-size: 18px;
+    font-weight: 600;
+    font-stretch: 105%;
+    line-height: 26px;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+}
+
+.live-intro p {
+    max-width: 62ch;
+    margin: 0;
+    color: var(--muted);
+    text-wrap: pretty;
+}
+
+.live-intro .caption:empty {
+    display: none;
+}
+
+.live-feed {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.badge .spin {
+    width: 12px;
+    height: 12px;
+}
+
+.lookup .event-text {
+    display: grid;
+    gap: 2px;
+}
+
+.lookup summary,
+.transcript > summary {
+    cursor: pointer;
+    list-style: none;
+}
+
+.lookup summary::-webkit-details-marker,
+.transcript > summary::-webkit-details-marker {
+    display: none;
+}
+
+.lookup summary {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 4px;
+    width: fit-content;
+    border-radius: 4px;
+}
+
+.lookup summary:hover {
+    color: var(--fg);
+}
+
+.caret {
+    flex: none;
+    transition: transform 120ms ease-out;
+}
+
+.lookup summary .caret {
+    width: 12px;
+    height: 12px;
+    margin-top: 3px;
+    transform: rotate(-90deg);
+}
+
+details[open] > summary .caret {
+    transform: none;
+}
+
+.lookup-answer {
+    margin: 6px 0 0;
+    padding: 8px 12px;
+    border: 1px solid var(--border-muted);
+    border-radius: var(--radius);
+    background: var(--subtle);
+    color: var(--fg);
+    font-size: 13px;
+    line-height: 20px;
+    white-space: pre-wrap;
+}
+
+/* After an interview: its transcript, folded, in the conversation. */
+.transcript > summary .caret {
+    margin-left: auto;
+}
+
+.transcript[open] > summary {
+    border-bottom: 1px solid var(--border);
+}
+
+.transcript > summary:hover {
+    color: var(--fg);
+}
+
+.transcript-line {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 8px;
+    padding: 6px 12px;
+    font-size: 13px;
+    line-height: 20px;
+    overflow-wrap: anywhere;
+}
+
+.transcript-line + .transcript-line {
+    border-top: 1px solid var(--border-muted);
+}
+
+.transcript-line strong {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.transcript-line.user {
+    color: var(--muted);
+}
+
+.transcript-line.user strong {
+    color: var(--fg);
+}
+
+.found {
+    display: grid;
+    gap: 6px;
+}
+
+.found-item {
+    justify-content: space-between;
+    height: auto;
+    min-height: 36px;
+    padding: 6px 12px;
+    text-align: left;
+    white-space: normal;
+}
+
+.found-item .caption {
+    color: var(--muted);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .spin,
-    .ptt.working .bars i {
+    .ptt.working .bars i,
+    .ptt.live.checking .ptt-ring,
+    .app[data-live="live"] .live-dot::after {
         animation: none;
     }
 
